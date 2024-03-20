@@ -379,7 +379,6 @@ module g_tracer_utils
   public :: g_send_data
   public :: g_tracer_get_obc_segment_props
   public :: fm_string_len
-  public :: is_root_pe
   ! <INTERFACE NAME="g_tracer_add_param">
   !  <OVERVIEW>
   !   Add a new parameter for the generic tracer package
@@ -948,8 +947,7 @@ contains
     call  g_tracer_add_param(trim(g_tracer%name)//"_obc_src_file_name",g_tracer%obc_src_file_name ,  'obgc_obc.nc') 
     call  g_tracer_add_param(trim(g_tracer%name)//"_obc_src_field_name",g_tracer%obc_src_field_name,trim(g_tracer%name)) 
     call  g_tracer_add_param(trim(g_tracer%name)//"_obc_lfac_in" ,g_tracer%obc_lfac_in , 1.0) 
-    call  g_tracer_add_param(trim(g_tracer%name)//"_obc_lfac_out",g_tracer%obc_lfac_out, 1.0) 
-    
+    call  g_tracer_add_param(trim(g_tracer%name)//"_obc_lfac_out",g_tracer%obc_lfac_out, 1.0)
     !===================================================================
     !Reversed Linked List implementation! Make this new node to be the head of the list.
     !===================================================================    
@@ -1041,9 +1039,8 @@ contains
     
   end subroutine g_tracer_init
 
-  subroutine g_tracer_flux_init(g_tracer, verbosity)
+  subroutine g_tracer_flux_init(g_tracer)
     type(g_tracer_type), pointer :: g_tracer
-    integer, optional, intent(in) :: verbosity  !< A 0-9 integer indicating a level of verbosity.
 
 
     !===================================================================
@@ -1062,8 +1059,7 @@ contains
             mol_wt            = g_tracer%flux_gas_molwt,                                      &
             param             = g_tracer%flux_gas_param,                                      &
             ice_restart_file  = g_tracer%ice_restart_file,                                    &
-            ocean_restart_file= g_tracer%flux_gas_restart_file,                               &
-            verbosity         = verbosity                                                     &
+            ocean_restart_file= g_tracer%flux_gas_restart_file                                &
             )
     endif
 
@@ -1072,8 +1068,7 @@ contains
             flux_type            = 'land_sea_runoff',                                         &
             implementation       = 'river',                                                   &
             param                = g_tracer%flux_param,                                       &
-            ice_restart_file     = g_tracer%ice_restart_file,                                 &
-            verbosity            = verbosity                                                  &
+            ice_restart_file     = g_tracer%ice_restart_file                                  &
             )
     endif
 
@@ -1082,8 +1077,7 @@ contains
             flux_type            = 'air_sea_deposition',                                      &
             implementation       = 'wet',                                                     &
             param                = g_tracer%flux_param,                                       &
-            ice_restart_file     = g_tracer%ice_restart_file,                                 &
-            verbosity            = verbosity                                                  &
+            ice_restart_file       = g_tracer%ice_restart_file                                &
             )
     endif
 
@@ -1092,8 +1086,7 @@ contains
             flux_type            = 'air_sea_deposition',                                      &
             implementation       = 'dry',                                                     &
             param                = g_tracer%flux_param,                                       &
-            ice_restart_file     = g_tracer%ice_restart_file,                                 &
-            verbosity            = verbosity                                                  &
+            ice_restart_file     = g_tracer%ice_restart_file                                  &
             )
     endif
     
@@ -2090,16 +2083,7 @@ contains
     case ('sc_no')
        g_tracer%sc_no  = w0*g_tracer%sc_no + w1*array
     case ('stf') 
-       ! Check for edge case where the new value is a weighted combination of old and new values
-       ! and the old value had runoff added to it later. In this case, the result would be
-       ! invalid if the new value did not also have runoff added to it (which is not known).
-       if (w1 < 1 .and. g_tracer%runoff_added_to_stf) then
-         call mpp_error(FATAL, trim(sub_name)//&
-           ": Cannot set stf to a weighted combination of values with and without runoff.")
-       else     
-         g_tracer%stf    = w0*g_tracer%stf + w1*array 
-         g_tracer%runoff_added_to_stf = .false.
-       endif
+       g_tracer%stf    = w0*g_tracer%stf + w1*array
     case ('stf_gas') 
        g_tracer%stf_gas= w0*g_tracer%stf_gas + w1*array
     case ('deltap') 
@@ -2243,8 +2227,8 @@ contains
     case ('sc_no') 
        g_tracer%sc_no     = value 
     case ('stf') 
-       g_tracer%stf       = value 
-       g_tracer%runoff_added_to_stf = .false.
+       g_tracer%stf       = value
+       g_tracer%runoff_added_to_stf = .false. 
     case ('stf_gas') 
        g_tracer%stf_gas   = value 
     case ('deltap') 
@@ -3597,28 +3581,20 @@ contains
   end subroutine g_diag_field_add
 
 
-  subroutine g_tracer_print_info(g_tracer_list, verbosity)
-    type(g_tracer_type),    pointer    :: g_tracer_list ! A pointer to the start of the generic tracer list
-    integer,      optional, intent(in) :: verbosity     ! A 0-9 integer indicating a level of verbosity.
-    type(g_tracer_type),    pointer    :: g_tracer
-    integer :: num_prog, num_diag
-    integer :: verbose
+  subroutine g_tracer_print_info(g_tracer_list)
+    type(g_tracer_type),    pointer    :: g_tracer_list, g_tracer 
+    integer               :: num_prog,num_diag
 
     character(len=fm_string_len), parameter :: sub_name = 'g_tracer_print_info'
     character(len=256) :: errorstring
 
     if(.NOT. associated(g_tracer_list)) return
 
-    verbose = 5
-    if (present(verbosity)) verbose = verbosity
+    write(errorstring, '(a)')  ': Dumping generic tracer namelists tree: '
+    call mpp_error(NOTE, trim(sub_name) //  trim(errorstring))    
 
-    if (verbose >= 5) then
-       write(errorstring, '(a)')  ': Dumping generic tracer namelists tree: '
-       call mpp_error(NOTE, trim(sub_name) //  trim(errorstring))    
-
-       if (.not. fm_dump_list('/ocean_mod/namelists', recursive = .true.)) then
-          call mpp_error(FATAL, trim(sub_name) // ': Problem dumping generic tracer namelists tree')
-       endif
+    if (.not. fm_dump_list('/ocean_mod/namelists', recursive = .true.)) then
+       call mpp_error(FATAL, trim(sub_name) // ': Problem dumping generic tracer namelists tree')
     endif
 
     num_prog = 0
@@ -3739,16 +3715,13 @@ contains
 
     if(errorstring .ne. '') then
        !The following cannot be FATAL for backward compatibility with MOM5 and GOLD
-       call mpp_error(WARNING, trim(sub_name) // ' : there are tracers with required source properties that are not set '//&
-                      'in the field_table. Grep the stdout for NOTEs from g_tracer_print_info and correct the field_table!')
+       call mpp_error(WARNING, trim(sub_name) // ' : there are tracers with required source properties that are not set in the field_table. Grep the stdout for NOTEs from g_tracer_print_info and correct the field_table!'  )
     endif
 
-    if (verbose >= 3) then
-       write(errorstring, '(a,i4)')  ': Number of prognostic generic tracers = ',num_prog
-       call mpp_error(NOTE, trim(sub_name) //  trim(errorstring))    
-       write(errorstring, '(a,i4)')  ': Number of diagnostic generic tracers = ',num_diag
-       call mpp_error(NOTE, trim(sub_name) //  trim(errorstring))     
-    endif
+    write(errorstring, '(a,i4)')  ': Number of prognostic generic tracers = ',num_prog
+    call mpp_error(NOTE, trim(sub_name) //  trim(errorstring))    
+    write(errorstring, '(a,i4)')  ': Number of diagnostic generic tracers = ',num_diag
+    call mpp_error(NOTE, trim(sub_name) //  trim(errorstring))     
 
   end subroutine g_tracer_print_info
 
@@ -3784,9 +3757,9 @@ contains
   subroutine g_tracer_get_obc_segment_props(g_tracer_list, name, obc_has, src_file, src_var_name,lfac_in,lfac_out)
     type(g_tracer_type),      pointer    :: g_tracer_list,g_tracer
     character(len=*),         intent(in) :: name
-    logical,                  intent(out):: obc_has                !<.true. if This tracer has OBC  
+    logical,                  intent(out):: obc_has                !<.true. if This tracer has OBC
     character(len=*),optional,intent(out):: src_file, src_var_name !<OBC source file and variable in file
-    real,            optional,intent(out):: lfac_in,lfac_out       !<OBC reservoir inverse lengthscale factor    
+    real,            optional,intent(out):: lfac_in,lfac_out       !<OBC reservoir inverse lengthscale factor
     character(len=fm_string_len), parameter :: sub_name = 'g_tracer_get_obc_segment_props'
 
     if(.NOT. associated(g_tracer_list)) call mpp_error(FATAL, trim(sub_name)//&
@@ -3996,13 +3969,5 @@ contains
 
   END FUNCTION g_send_data_3d
 
- !> This returns .true. if the current PE is the root PE.
-function is_root_pe()
-  ! This returns .true. if the current PE is the root PE.
-  logical :: is_root_pe
-  is_root_pe = .false.
-  if (mpp_pe() == mpp_root_pe()) is_root_pe = .true.
-  return
-end function is_root_pe
 
 end module g_tracer_utils

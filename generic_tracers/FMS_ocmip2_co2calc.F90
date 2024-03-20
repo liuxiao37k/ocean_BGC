@@ -100,7 +100,7 @@ subroutine read_mocsy_namelist()
 
     read (input_nml_file, nml=mocsy_nml, iostat=io_status)
     ierr = check_nml_error(io_status,'mocsy_nml')
-
+    
     write (stdoutunit,'(/)')
     write (stdoutunit, mocsy_nml)
     write (stdlogunit, mocsy_nml)
